@@ -277,13 +277,6 @@ Future optional additions:
 
 ---
 
-## License
-
-This project is released under the MIT License.
-
-Contributions, experimentation, and educational adaptation are encouraged.
-
----
 
 ## Vision
 
