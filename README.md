@@ -1,3 +1,15 @@
+![BioSignal-Interface]<(asset/ChatGPT Image Jun 20, 2026, 09_43_27 PM.png)>
+
+![Status](https://img.shields.io/badge/status-experimental-red)
+![ESP32](https://img.shields.io/badge/platform-ESP32-blue)
+
+
+<p align="center">
+  <a href="https://awakenfury.github.io/BioSignal-Interface/">
+    🌐 Live Demo
+  </a>
+</p>
+
 # BioWearable-Neural-Core
 BioWearable Neural Core is an experimental six-channel electromyography (EMG) platform designed to capture, visualize, classify, and replay muscle activation patterns in real time using an ESP32.
 
