@@ -2,11 +2,7 @@
 ![Status](https://img.shields.io/badge/status-experimental-red)
 ![ESP32](https://img.shields.io/badge/platform-ESP32-blue)
 
-![ESP32](https://shields.io)
-![EMG](https://shields.io)
-![WebSocket](https://shields.io)
-![Status](https://shields.io)
-![Alma Mater](https://shields.io)
+
 
 <p align="center">
   <a href="https://awakenfury.github.io/BioWearable-Neural-Core/">
