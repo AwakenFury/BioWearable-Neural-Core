@@ -11,8 +11,6 @@
 </p>
 
 
-## Overview
-
 
 # 🧠 BioWearable Neural Core
 
