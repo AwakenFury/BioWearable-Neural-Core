@@ -1,4 +1,4 @@
-![BioSignal-Interface]<(asset/ChatGPT Image Jun 20, 2026, 09_43_27 PM.png)>
+![BioSignal-Interface](<asset/ChatGPT Image Jun 20, 2026, 09_43_27 PM.png>)
 
 ![Status](https://img.shields.io/badge/status-experimental-red)
 ![ESP32](https://img.shields.io/badge/platform-ESP32-blue)
