@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>6-Ch Full Vector & Pose Fine-Tuning Scope</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #09090b; color: #f4f4f5; margin: 0; padding: 15px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .container { width: 100%; max-width: 1250px; }
+        .grid { display: grid; grid-template-columns: 1.6fr 1.4fr; gap: 15px; margin-top: 10px; }
+        .panel { background: #141417; padding: 15px; border-radius: 10px; border: 1px solid #27272a; margin-bottom: 15px; }
+        .status-bar { display: flex; justify-content: space-between; font-size: 13px; color: #a1a1aa; }
+        .status { font-weight: bold; }
+        .status.connected { color: #10b981; }
+        .status.disconnected { color: #ef4444; }
+        .status.recording { color: #f59e0b; }
+        .status.replaying { color: #a855f7; }
+        
+        .canvas-container {
+            position: relative; width: 100%; height: 450px; 
+            background: #000000; border: 1px solid #3f3f46; border-radius: 6px;
+            overflow: hidden;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        .btn {
+            background: #27272a; color: white; border: none; padding: 8px 14px; 
+            border-radius: 5px; font-weight: 600; cursor: pointer; font-size: 13px;
+        }
+        .btn:hover { background: #3f3f46; }
+        .btn-record { background: #dc2626; }
+        .btn-record:hover { background: #b91c1c; }
+        .btn-replay { background: #7c3aed; }
+        .btn-replay:hover { background: #6d28d9; }
+        .btn-active { background: #10b981 !important; }
+        .flex-buttons { display: flex; gap: 8px; margin-top: 12px; }
+        
+        /* Advanced 6-Row Dual Slider Grid Layout */
+        .ch-row {
+            background: #1c1c21; border-radius: 6px; padding: 10px;
+            border-left: 4px solid #27272a; margin-bottom: 8px;
+            display: grid; grid-template-columns: 0.8fr 0.8fr 1.2fr 1.2fr; gap: 12px; align-items: center;
+        }
+        .metrics-label { font-size: 10px; color: #71717a; text-transform: uppercase; font-weight: bold; }
+        .metrics-value { font-family: monospace; font-size: 12px; color: #f4f4f5; }
+        
+        .slider-container { display: flex; flex-direction: column; gap: 2px; }
+        .slider-label-strip { display: flex; justify-content: space-between; font-size: 10px; color: #a1a1aa; font-family: monospace; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: #27272a; height: 4px; border-radius: 2px; margin: 2px 0; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 12px; height: 12px; border-radius: 50%; background: #ffffff; cursor: pointer; }
+        .thresh-slider::-webkit-slider-thumb { background: #f59e0b !important; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="panel" style="padding: 10px 15px;">
+        <div class="status-bar">
+            <div>System Mode: <span id="sys-status" class="status disconnected">Disconnected</span></div>
+            <div>Saved Samples: <span id="sample-count" style="color: #2563eb; font-weight:bold;">0</span></div>
+            <div>Active Pose Output: <span id="master-state" style="color:#10b981; font-weight:bold;">IDLE</span></div>
+        </div>
+    </div>
+
+    <div class="grid">
+        <!-- 6-Channel Split Screen Canvas Scope -->
+        <div>
+            <div class="panel">
+                <div class="canvas-container">
+                    <canvas id="scopeCanvas"></canvas>
+                </div>
+                <div class="flex-buttons">
+                    <button id="btnRecord" class="btn btn-record" onclick="toggleRecording()">Start Recording</button>
+                    <button id="btnDownload" class="btn" onclick="downloadCSV()" disabled>Download CSV</button>
+                    <button id="btnReplay" class="btn btn-replay" onclick="toggleReplay()" disabled>Replay Kinematics</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6-Lane Calibration Matrix Panel with Dual Parameter Tracking Sliders -->
+        <div>
+            <div class="panel" style="display:flex; flex-direction:column; padding: 10px 15px;">
+                <h3 style="margin:0 0 10px 0; font-size:14px; letter-spacing: 0.5px;">FINE TUNING & THRESHOLD MATRIX</h3>
+                
+                <!-- Channel 1 Control Block -->
+                <div id="ch1-ui" class="ch-row" style="border-left-color: #3b82f6;">
+                    <div><div class="metrics-label" style="color:#3b82f6;">CH 1 (A0)</div><div class="metrics-value">V: <span id="v1">0</span></div></div>
+                    <div class="metrics-value" style="font-weight:bold;">RMS:<br><span id="r1">0</span></div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label>Alpha</label><span id="a1">0.15</span></div>
+                        <input type="range" id="sl1" min="0.01" max="1.00" step="0.01" value="0.15" oninput="sendAlpha(1, this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label style="color:#f59e0b;">Thresh</label><span id="t1">350</span></div>
+                        <input type="range" class="thresh-slider" id="th1" min="100" max="2500" step="25" value="350" oninput="updateLocalThreshold(1, this.value)">
+                    </div>
+                </div>
+
+                <!-- Channel 2 Control Block -->
+                <div id="ch2-ui" class="ch-row" style="border-left-color: #10b981;">
+                    <div><div class="metrics-label" style="color:#10b981;">CH 2 (A1)</div><div class="metrics-value">V: <span id="v2">0</span></div></div>
+                    <div class="metrics-value" style="font-weight:bold;">RMS:<br><span id="r2">0</span></div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label>Alpha</label><span id="a2">0.15</span></div>
+                        <input type="range" id="sl2" min="0.01" max="1.00" step="0.01" value="0.15" oninput="sendAlpha(2, this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label style="color:#f59e0b;">Thresh</label><span id="t2">350</span></div>
+                        <input type="range" class="thresh-slider" id="th2" min="100" max="2500" step="25" value="350" oninput="updateLocalThreshold(2, this.value)">
+                    </div>
+                </div>
+
+                <!-- Channel 3 Control Block -->
+                <div id="ch3-ui" class="ch-row" style="border-left-color: #a855f7;">
+                    <div><div class="metrics-label" style="color:#a855f7;">CH 3 (A2)</div><div class="metrics-value">V: <span id="v3">0</span></div></div>
+                    <div class="metrics-value" style="font-weight:bold;">RMS:<br><span id="r3">0</span></div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label>Alpha</label><span id="a3">0.15</span></div>
+                        <input type="range" id="sl3" min="0.01" max="1.00" step="0.01" value="0.15" oninput="sendAlpha(3, this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label style="color:#f59e0b;">Thresh</label><span id="t3">350</span></div>
+                        <input type="range" class="thresh-slider" id="th3" min="100" max="2500" step="25" value="350" oninput="updateLocalThreshold(3, this.value)">
+                    </div>
+                </div>
+
+                <!-- Channel 4 Control Block -->
+                <div id="ch4-ui" class="ch-row" style="border-left-color: #f59e0b;">
+                    <div><div class="metrics-label" style="color:#f59e0b;">CH 4 (A3)</div><div class="metrics-value">V: <span id="v4">0</span></div></div>
+                    <div class="metrics-value" style="font-weight:bold;">RMS:<br><span id="r4">0</span></div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label>Alpha</label><span id="a4">0.15</span></div>
+                        <input type="range" id="sl4" min="0.01" max="1.00" step="0.01" value="0.15" oninput="sendAlpha(4, this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label style="color:#f59e0b;">Thresh</label><span id="t4">350</span></div>
+                        <input type="range" class="thresh-slider" id="th4" min="100" max="2500" step="25" value="350" oninput="updateLocalThreshold(4, this.value)">
+                    </div>
+                </div>
+
+                <!-- Channel 5 Control Block -->
+                <div id="ch5-ui" class="ch-row" style="border-left-color: #ec4899;">
+                    <div><div class="metrics-label" style="color:#ec4899;">CH 5 (A4)</div><div class="metrics-value">V: <span id="v5">0</span></div></div>
+                    <div class="metrics-value" style="font-weight:bold;">RMS:<br><span id="r5">0</span></div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label>Alpha</label><span id="a5">0.15</span></div>
+                        <input type="range" id="sl5" min="0.01" max="1.00" step="0.01" value="0.15" oninput="sendAlpha(5, this.value)">
+                    </div>
+
+                                        <div class="slider-container">
+                        <div class="slider-label-strip"><label style="color:#f59e0b;">Thresh</label><span id="t5">350</span></div>
+                        <input type="range" class="thresh-slider" id="th5" min="100" max="2500" step="25" value="350" oninput="updateLocalThreshold(5, this.value)">
+                    </div>
+                </div>
+
+                <!-- Channel 6 Control Block -->
+                <div id="ch6-ui" class="ch-row" style="border-left-color: #06b6d4;">
+                    <div><div class="metrics-label" style="color:#06b6d4;">CH 6 (A5)</div><div class="metrics-value">V: <span id="v6">0</span></div></div>
+                    <div class="metrics-value" style="font-weight:bold;">RMS:<br><span id="r6">0</span></div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label>Alpha</label><span id="a6">0.15</span></div>
+                        <input type="range" id="sl6" min="0.01" max="1.00" step="0.01" value="0.15" oninput="sendAlpha(6, this.value)">
+                    </div>
+                    <div class="slider-container">
+                        <div class="slider-label-strip"><label style="color:#f59e0b;">Thresh</label><span id="t6">350</span></div>
+                        <input type="range" class="thresh-slider" id="th6" min="100" max="2500" step="25" value="350" oninput="updateLocalThreshold(6, this.value)">
+                    </div>
+                </div>
+
+                <hr style="border:0; border-top:1px solid #27272a; margin:4px 0;">
+                <div class="metrics-label">Pose Vector Analysis Description</div>
+                <div id="chainOutput" style="font-size:11px; color:#a1a1aa; line-height:1.2; min-height:35px;">
+                    Awaiting 6-channel vector input signals...
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let gateway = `ws://${window.location.hostname}/ws`;
+    let websocket;
+    
+    // Canvas Multi-Lane Configuration
+    let canvas, ctx;
+    let dataPoints = [];
+    const MAX_POINTS = 300; 
+
+    let sessionData = []; 
+    let recordedPattern = []; 
+    let isRecording = false;
+    let isReplaying = false;
+    let replayIndex = 0;
+    
+    // 6-Channel Independent RMS Windows (150ms structural memory)
+    let rmsWin1 = [], rmsWin2 = [], rmsWin3 = [], rmsWin4 = [], rmsWin5 = [], rmsWin6 = [];
+    const RMS_SIZE = 15;
+
+    // Dynamic Calibration Threshold Memory Matrix (Pre-loaded defaults)
+    let dynamicThresholds = [350, 350, 350, 350, 350, 350];
+
+
+
+    window.addEventListener('load', () => {
+        initCanvas();
+        initWebSocket();
+        requestAnimationFrame(renderOscilloscope);
+    });
+
+    function initCanvas() {
+        canvas = document.getElementById('scopeCanvas');
+        ctx = canvas.getContext('2d');
+        canvas.width = canvas.clientWidth;
+        canvas.height = canvas.clientHeight;
+        
+        // Populate tracking arrays with baseline zeroes
+        for(let i=0; i<MAX_POINTS; i++) {
+            dataPoints.push({ f1:0, f2:0, f3:0, f4:0, f5:0, f6:0 });
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = canvas.clientWidth;
+            canvas.height = canvas.clientHeight;
+        });
+    }
+
+    function initWebSocket() {
+        websocket = new WebSocket(gateway);
+        websocket.onopen = () => updateSystemUIState('Connected');
+        websocket.onclose = () => { updateSystemUIState('Disconnected'); setTimeout(initWebSocket, 2000); };
+        websocket.onmessage = (event) => {
+            if (isReplaying) return; 
+            
+            // Format incoming string vector matrix: r1,f1,r2,f2,r3,f3,r4,f4,r5,f5,r6,f6
+            const p = event.data.split(',');
+            if (p.length === 12) {
+                processDataStep(
+                    parseInt(p[0]), parseInt(p[1]),
+                    parseInt(p[2]), parseInt(p[3]),
+                    parseInt(p[4]), parseInt(p[5]),
+                    parseInt(p[6]), parseInt(p[7]),
+                    parseInt(p[8]), parseInt(p[9]),
+                    parseInt(p[10]), parseInt(p[11])
+                );
+            }
+        };
+    }
+
+    function processDataStep(r1, f1, r2, f2, r3, f3, r4, f4, r5, f5, r6, f6) {
+        // Render Numbers Dynamically into Rows
+        document.getElementById('v1').textContent = f1;
+        document.getElementById('v2').textContent = f2;
+        document.getElementById('v3').textContent = f3;
+        document.getElementById('v4').textContent = f4;
+        document.getElementById('v5').textContent = f5;
+        document.getElementById('v6').textContent = f6;
+
+        // Compute Moving RMS Filters
+        let rms1 = calcRMS(r1, rmsWin1);
+        let rms2 = calcRMS(r2, rmsWin2);
+        let rms3 = calcRMS(r3, rmsWin3);
+        let rms4 = calcRMS(r4, rmsWin4);
+        let rms5 = calcRMS(r5, rmsWin5);
+        let rms6 = calcRMS(r6, rmsWin6);
+        
+        document.getElementById('r1').textContent = rms1;
+        document.getElementById('r2').textContent = rms2;
+        document.getElementById('r3').textContent = rms3;
+        document.getElementById('r4').textContent = rms4;
+        document.getElementById('r5').textContent = rms5;
+        document.getElementById('r6').textContent = rms6;
+
+        evaluateKineticChain(rms1, rms2, rms3, rms4, rms5, rms6);
+
+        // Shift Canvas Screen Cache Matrix
+        dataPoints.push({ f1: f1, f2: f2, f3: f3, f4: f4, f5: f5, f6: f6 });
+        dataPoints.shift();
+
+        if (isRecording) {
+            sessionData.push({ 
+                time: Date.now(), 
+                r1:r1, f1:f1, r2:r2, f2:f2, r3:r3, f3:f3,
+                r4:r4, f4:f4, r5:r5, f5:f5, r6:r6, f6:f6 
+            });
+            document.getElementById('sample-count').textContent = sessionData.length;
+        }
+    }
+
+    function calcRMS(val, win) {
+        win.push(val);
+        if (win.length > RMS_SIZE) win.shift();
+        let sumSquares = win.reduce((sum, v) => sum + (v * v), 0);
+        return Math.round(Math.sqrt(sumSquares / win.length));
+    }
+
+    function updateLocalThreshold(channelNum, val) {
+        dynamicThresholds[channelNum - 1] = parseInt(val);
+        document.getElementById(`t${channelNum}`).textContent = val;
+    }
+
+    function evaluateKineticChain(rms1, rms2, rms3, rms4, rms5, rms6) {
+        const out = document.getElementById('chainOutput');
+        const state = document.getElementById('master-state');
+        
+        let rmsArray = [rms1, rms2, rms3, rms4, rms5, rms6];
+        let maxRMS = 0;
+        let maxIdx = -1;
+
+        // Route comparisons through your slider gates
+        for(let i = 0; i < 6; i++) {
+            if (rmsArray[i] >= dynamicThresholds[i] && rmsArray[i] > maxRMS) {
+                maxRMS = rmsArray[i];
+                maxIdx = i;
+            }
+        }
+
+        if (maxIdx === -1) {
+            state.textContent = "IDLE / REST";
+            state.style.color = "#a1a1aa";
+            out.innerHTML = "All channels below their active slider threshold gates.";
+            return;
+        }
+
+        const colors = ["#3b82f6", "#10b981", "#a855f7", "#f59e0b", "#ec4899", "#06b6d4"];
+        state.style.color = colors[maxIdx];
+
+        // Match patterns with real-time scaling values
+        if (maxIdx === 1 && rmsArray[3] >= dynamicThresholds[3]) {
+            state.textContent = "GRIP (Fine-Tuned)";
+            out.innerHTML = "✊ <b>Grip Active:</b> Channels 2 and 4 successfully crossed matched threshold gates simultaneously.";
+        } else if (maxIdx === 2) {
+            state.textContent = "EXTEND (Fine-Tuned)";
+            out.innerHTML = "🫱 <b>Extension Verified:</b> Channel 3 crossed gate. Running forward kinematics.";
+        } else if (maxIdx === 4 && rmsArray[4] >= dynamicThresholds[4]) {
+            state.textContent = "TWIST (Fine-Tuned)";
+            out.innerHTML = "🔄 <b>Rotation Verified:</b> High isolation trigger captured on Channel 5 tracking bounds.";
+        } else {
+            state.textContent = `VECTOR CH-${maxIdx + 1} (Learned Target)`;
+            out.innerHTML = `🧬 <b>ML Feature Window:</b> Channel ${maxIdx + 1} dominant at <b>${maxRMS} RMS</b> (Threshold: ${dynamicThresholds[maxIdx]}). Clean slice saved for parsing.`;
+        }
+    }
+
+    function renderOscilloscope() {
+        ctx.fillStyle = '#000000';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const laneHeight = canvas.height / 6;
+        const stepX = canvas.width / (MAX_POINTS - 1);
+
+        // Render Background Lanes Layout
+        ctx.strokeStyle = '#141417'; ctx.lineWidth = 1;
+        for(let i = 1; i < 6; i++) {
+            let y = laneHeight * i;
+            ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+        }
+
+        // Project signals cleanly inside horizontal channels
+        drawStackedTrace('#3b82f6', p => p.f1, 0, laneHeight, stepX);
+        drawStackedTrace('#10b981', p => p.f2, 1, laneHeight, stepX);
+        drawStackedTrace('#a855f7', p => p.f3, 2, laneHeight, stepX);
+        drawStackedTrace('#f59e0b', p => p.f4, 3, laneHeight, stepX);
+        drawStackedTrace('#ec4899', p => p.f5, 4, laneHeight, stepX);
+        drawStackedTrace('#06b6d4', p => p.f6, 5, laneHeight, stepX);
+
+        requestAnimationFrame(renderOscilloscope);
+    }
+
+    function drawStackedTrace(color, valExtractor, laneIndex, laneHeight, stepX) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const laneBottom = (laneIndex * laneHeight) + laneHeight;
+        for(let i = 0; i < MAX_POINTS; i++) {
+            let valueScale = (valExtractor(dataPoints[i]) / 4095) * (laneHeight - 6);
+            let y = laneBottom - 3 - valueScale; 
+            let x = i * stepX;
+            if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+    }
+
+    function toggleRecording() {
+        const btn = document.getElementById('btnRecord');
+        if (!isRecording) {
+            sessionData = []; isRecording = true;
+            btn.textContent = "Stop Core"; btn.classList.add('btn-active');
+            updateSystemUIState('Recording');
+            document.getElementById('btnDownload').disabled = true;
+            document.getElementById('btnReplay').disabled = true;
+        } else {
+            isRecording = false; btn.textContent = "Start Recording"; btn.classList.remove('btn-active');
+            updateSystemUIState('Connected');
+            if (sessionData.length > 0) {
+                recordedPattern = [...sessionData];
+                document.getElementById('btnDownload').disabled = false;
+                document.getElementById('btnReplay').disabled = false;
+            }
+        }
+    }
+
+    function toggleReplay() {
+        const btn = document.getElementById('btnReplay');
+        if (!isReplaying) {
+            isReplaying = true; replayIndex = 0;
+            btn.textContent = "Halt Replay"; btn.classList.add('btn-active');
+            updateSystemUIState('Replaying');
+            executeReplayLoop();
+        } else {
+            isReplaying = false; btn.textContent = "Replay Array"; btn.classList.remove('btn-active');
+            updateSystemUIState('Connected');
+        }
+    }
+
+    function executeReplayLoop() {
+        if (!isReplaying) return;
+        if (replayIndex >= recordedPattern.length) replayIndex = 0;
+
+        const f = recordedPattern[replayIndex];
+        processDataStep(f.r1, f.f1, f.r2, f.f2, f.r3, f.f3, f.r4, f.f4, f.r5, f.f5, f.r6, f.f6);
+        replayIndex++;
+
+        setTimeout(executeReplayLoop, 10);
+    }
+
+    function downloadCSV() {
+        if (recordedPattern.length === 0) return;
+        
+        let csv = "Timestamp_MS,CH1_Raw,CH1_Filt,CH2_Raw,CH2_Filt,CH3_Raw,CH3_Filt,CH4_Raw,CH4_Filt,CH5_Raw,CH5_Filt,CH6_Raw,CH6_Filt\n";
+        recordedPattern.forEach(row => {
+            csv += `${row.time},${row.r1},${row.f1},${row.r2},${row.f2},${row.r3},${row.f3},${row.r4},${row.f4},${row.r5},${row.f5},${row.r6},${row.f6}\n`;
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.setAttribute("href", url);
+        link.setAttribute("download", `kinetic_fine_tuned_6ch_${Date.now()}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+
+    function sendAlpha(channelNum, val) {
+        document.getElementById(`a${channelNum}`).textContent = val;
+        if (websocket && websocket.readyState === WebSocket.OPEN) {
+            websocket.send(`SET_ALPHA_CH${channelNum}:${val}`);
+        }
+    }
+
+    function updateSystemUIState(state) {
+        const statusEl = document.getElementById('sys-status');
+        statusEl.textContent = state;
+        statusEl.className = 'status ' + state.toLowerCase();
+    }
+</script>
+</body>
+</html>
+
+
+#endif
+
+                  
